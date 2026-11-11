@@ -19,6 +19,7 @@ runs:
       with:
         imageName: ghcr.io/monome/norns-ci
         cacheFrom: ghcr.io/monome/norns-ci
-        push: filter
+        # only the upstream repo can push to ghcr.io/monome; forks just pull the cache
+        push: ${{ github.repository == 'monome/norns' && 'filter' || 'never' }}
         refFilterForPush: refs/heads/main
         runCmd: ./waf configure --release && ./waf build --release
