@@ -23,13 +23,12 @@ end
 -- @tparam string directory path to directory
 -- @treturn table
 util.scandir = function(directory)
-  local i, t, popen = 0, {}, io.popen
-  local pfile = popen('ls -pL --group-directories-first "'..directory..'"')
-  for filename in pfile:lines() do
+  local i, t = 0, {}
+  local text = _norns.execute('ls -pL --group-directories-first "'..directory..'"')
+    for filename in text:gmatch("[^\r\n]+") do
     i = i + 1
     t[i] = filename
   end
-  pfile:close()
   return t
 end
 
@@ -67,7 +66,7 @@ end
 --- make directory (with parents as needed).
 -- @tparam string path
 util.make_dir = function(path)
-  os.execute("mkdir -p " .. path)
+  _norns.execute("mkdir -p " .. path)
 end
 
 
@@ -76,9 +75,7 @@ end
 -- @param raw raw output (omit for scrubbed)
 -- @return output
 util.os_capture = function(cmd, raw)
-  local f = assert(io.popen(cmd, 'r'))
-  local s = assert(f:read('*a'))
-  f:close()
+  local s = _norns.execute(cmd)
   if raw then return s end
   s = string.gsub(s, '^%s+', '')
   s = string.gsub(s, '%s+$', '')
@@ -91,17 +88,22 @@ end
 -- @tparam string start string to search for
 -- @treturn boolean true or false
 util.string_starts = function(s,start)
-  return string.sub(s,1,string.len(start))==start
+	if s then
+		return string.sub(s,1,string.len(start))==start
+	else return false
+	end
 end
 
 --- trim string to a display width
 -- @tparam string s string to trim
--- @tparam number width maximum width
+-- @tparam number width maximum width in pixels
 -- @treturn string trimmed string
 util.trim_string_to_width = function(s, width)
   if _norns.screen_text_extents(s) > width then
     while _norns.screen_text_extents(s .. "...") > width do
-      s = string.gsub(s, "[^\128-\191][\128-\191]*$", "")
+      local n
+      s, n = string.gsub(s, "[^\128-\191][\128-\191]*$", "")
+      if n == 0 then break end
     end
     s = s .. "..."
   end

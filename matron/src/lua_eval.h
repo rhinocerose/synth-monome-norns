@@ -2,6 +2,10 @@
 
 #include <lua.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define STRING_NUM(n) #n
 #define LUA_ARG_ERROR(n) "error: requires " STRING_NUM(n) " arguments"
 #define lua_check_num_args(n)                   \
@@ -15,6 +19,10 @@ extern int l_report(lua_State *L, int status);
 
 extern int l_docall(lua_State *L, int narg, int nres);
 
-extern int l_dofile(lua_State *L, const char* filename);
+extern int l_dofile(lua_State *L, const char *filename);
 
 extern int l_handle_line(lua_State *L, char *line);
+
+#ifdef __cplusplus
+}
+#endif

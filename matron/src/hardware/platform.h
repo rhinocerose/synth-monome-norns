@@ -1,15 +1,28 @@
 #pragma once
 
+#include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef enum {
-  PLATFORM_UNKNOWN = 0,
-  PLATFORM_OTHER,
-  PLATFORM_CM3,
-  PLATFORM_PI3,
-  PLATFORM_PI4,
-  PLATFORM_CM4,
-  PLATFORM_CM4S,
+    PLATFORM_UNKNOWN = 0,
+    PLATFORM_OTHER,
+    PLATFORM_CM3,
+    PLATFORM_PI3,
+    PLATFORM_PI4,
+    PLATFORM_CM4,
+    PLATFORM_CM4S,
 } platform_t;
 
 extern void init_platform(void);
 extern platform_t platform(void);
-extern const char* platform_name(void);
+extern const char *platform_name(void);
+
+extern bool platform_factory();
+extern bool platform_shield();
+
+#ifdef __cplusplus
+}
+#endif

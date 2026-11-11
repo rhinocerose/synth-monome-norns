@@ -1,8 +1,12 @@
 #pragma once
 
 #include "device_hid.h"
-#include "oracle.h"
 #include "event_types.h"
+#include "oracle.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // initialize the lua VM and run setup scripts
 extern void w_init(void);
@@ -71,7 +75,7 @@ extern void w_handle_power(const int present);
 
 //--- system/stat
 extern void w_handle_stat(const uint32_t disk, const uint16_t temp, const uint16_t cpu,
-    const uint16_t cpu1, const uint16_t cpu2, const uint16_t cpu3, const uint16_t cpu4);
+                          const uint16_t cpu1, const uint16_t cpu2, const uint16_t cpu3, const uint16_t cpu4);
 
 //--- metro bang handler
 extern void w_handle_metro(const int idx, const int stage);
@@ -87,8 +91,11 @@ extern void w_handle_poll_data(int idx, int size, uint8_t *data);
 extern void w_handle_poll_wave(int idx, uint8_t *data);
 extern void w_handle_poll_io_levels(uint8_t *levels);
 extern void w_handle_poll_softcut_phase(int idx, float val);
-extern void w_handle_softcut_render(int idx, float sec_per_sample, float start, size_t size, float* data);
+extern void w_handle_softcut_render(int idx, float sec_per_sample, float start, size_t size, float *data);
 extern void w_handle_softcut_position(int idx, float pos);
+extern void w_handle_tape_status(int play_state, float play_pos_s, float play_len_s, int rec_state, float rec_pos_s, int loop_enabled);
+extern void w_handle_tape_play_file(const char *path);
+extern void w_handle_tape_rec_file(const char *path);
 
 extern void w_handle_engine_loaded();
 
@@ -97,10 +104,15 @@ extern void w_handle_startup_ready_ok();
 extern void w_handle_startup_ready_timeout();
 
 // util callbacks
-extern void w_handle_system_cmd();
+extern void w_handle_system_cmd(char *capture, int cb_ref);
+extern void w_handle_system_cmd_done(bool ok, char *err, int cb_ref);
 
 // display driver callbacks
 extern void w_handle_screen_refresh();
 
 // custom events
 extern void w_handle_custom_weave(struct event_custom *ev);
+
+#ifdef __cplusplus
+}
+#endif

@@ -7,9 +7,13 @@
 #include "device_midi.h"
 #include "device_monome.h"
 #include "device_serial.h"
+#include <lualib.h>
 #include <pthread.h>
 #include <stdint.h>
-#include <lualib.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // common data structure for all devices
 union dev {
@@ -36,3 +40,7 @@ extern int dev_id(union dev *d);
 extern const char *dev_serial(union dev *d);
 // get friendly name string from device pointer
 extern const char *dev_name(union dev *d);
+
+#ifdef __cplusplus
+}
+#endif

@@ -1,10 +1,11 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
+#include <sys/types.h>
 
-#include "oracle.h"
-#include "osc.h"
-#include "screen.h"
+// lo_message is opaque here. files using it include oracle.h for the full definition.
+typedef void *lo_message;
 
 // NOTE: new event types *must* be added to the end of the enum in the order
 // maintain ABI compatibility with compiled modules which interact with the
@@ -102,17 +103,25 @@ typedef enum {
     EVENT_SERIAL_REMOVE,
     // generic serial device event
     EVENT_SERIAL_EVENT,
+    // tape status poll (play/rec state & positions)
+    EVENT_TAPE_STATUS,
+    // tape file notifications
+    EVENT_TAPE_PLAY_FILE,
+    EVENT_TAPE_RECORD_FILE,
+    EVENT_TAPE_PLAY_CLOSE,
+    EVENT_TAPE_RECORD_CLOSE,
+    // detached system action launch result
+    EVENT_SYSTEM_CMD_DONE,
 } event_t;
 
-// a packed data structure for four volume levels
+// a data structure for twelve volume levels
 // each channel is represented by unsigned byte with audio taper:
 // 255 == 0db
-// each step represents 0.25db, down to -60db
-// the
+// each step represents 0.25db, down to -60db;
+// from 0.001 to 0 the scaling is linear in amplitude.
 typedef union {
-    uint8_t bytes[4];
-    uint32_t uint;
-} quad_levels_t;
+    uint8_t bytes[12];
+} crone_vu_t;
 
 struct event_common {
     uint32_t type;
@@ -271,14 +280,29 @@ struct event_poll_value {
 struct event_poll_io_levels {
     struct event_common common;
     uint32_t idx;
-    quad_levels_t value;
-}; // + 8
+    crone_vu_t value;
+}; // + 16
 
 struct event_poll_softcut_phase {
     struct event_common common;
     uint32_t idx;
     float value;
 }; // + 8
+
+struct event_tape_status {
+    struct event_common common;
+    int play_state;
+    float play_pos_s;
+    float play_len_s;
+    int rec_state;
+    float rec_pos_s;
+    int loop_enabled;
+}; // + 24
+
+struct event_tape_file {
+    struct event_common common;
+    char *path;
+}; // + 4
 
 struct event_poll_data {
     struct event_common common;
@@ -321,7 +345,15 @@ struct event_crow_event {
 struct event_system_cmd {
     struct event_common common;
     char *capture;
-}; // +4
+    int cb_ref;
+}; // +8
+
+struct event_system_cmd_done {
+    struct event_common common;
+    char *err; // NULL on success
+    int cb_ref;
+    bool ok;
+}; // +9
 
 struct event_softcut_render {
     struct event_common common;
@@ -329,7 +361,7 @@ struct event_softcut_render {
     float sec_per_sample;
     float start;
     size_t size;
-    float* data;
+    float *data;
 }; // + 20
 
 struct event_softcut_position {
@@ -340,12 +372,12 @@ struct event_softcut_position {
 
 struct event_serial_config {
     struct event_common common;
-    char* path;
-    char* name;
-    char* vendor;
-    char* model;
-    char* serial;
-    char* interface;
+    char *path;
+    char *name;
+    char *vendor;
+    char *model;
+    char *serial;
+    char *interface;
 }; // +24
 
 struct event_serial_add {
@@ -411,6 +443,7 @@ union event_data {
     struct event_crow_remove crow_remove;
     struct event_crow_event crow_event;
     struct event_system_cmd system_cmd;
+    struct event_system_cmd_done system_cmd_done;
     struct event_softcut_render softcut_render;
     struct event_softcut_position softcut_position;
     struct event_serial_config serial_config;
@@ -418,4 +451,6 @@ union event_data {
     struct event_serial_remove serial_remove;
     struct event_serial_event serial_event;
     struct event_custom custom;
+    struct event_tape_status tape_status;
+    struct event_tape_file tape_file;
 };

@@ -7,6 +7,10 @@
 #include "device_common.h"
 #include <monome.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef enum {
     DEVICE_MONOME_TYPE_GRID,
     DEVICE_MONOME_TYPE_ARC,
@@ -22,16 +26,16 @@ struct dev_monome {
     int cols;
     int rows;
     int quads;
-		int quad_xoff[4];
-		int quad_yoff[4];
+    int quad_xoff[4];
+    int quad_yoff[4];
 };
 
 // set a single grid led
-extern void dev_monome_grid_set_led(struct dev_monome *md, uint8_t x, uint8_t y, uint8_t val);
+extern void dev_monome_grid_set_led(struct dev_monome *md, uint8_t x, uint8_t y, int8_t val, bool rel);
 // set a single arc led
-extern void dev_monome_arc_set_led(struct dev_monome *md, uint8_t n, uint8_t x, uint8_t val);
+extern void dev_monome_arc_set_led(struct dev_monome *md, uint8_t n, uint8_t x, int8_t val, bool rel);
 // set all led
-extern void dev_monome_all_led(struct dev_monome *md, uint8_t val);
+extern void dev_monome_all_led(struct dev_monome *md, int8_t val, bool rel);
 // set all data for a quad
 extern void dev_monome_set_quad(struct dev_monome *md, uint8_t quad, uint8_t *data);
 // transmit data for all dirty quads
@@ -53,3 +57,7 @@ extern int dev_monome_init(void *self);
 extern void dev_monome_deinit(void *self);
 
 extern void *dev_monome_start(void *self);
+
+#ifdef __cplusplus
+}
+#endif

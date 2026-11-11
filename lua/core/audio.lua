@@ -7,8 +7,133 @@
 -- @alias Audio
 
 local cs = require 'controlspec'
+local Observable = require 'lib/container/observable'
+local tab = require 'tabutil'
+local hook = require 'core/hook'
 
 local Audio = {}
+
+--
+-- Tape state
+--
+
+-- play state constants
+local TAPE_PLAY_STATE_EMPTY = 0
+local TAPE_PLAY_STATE_READY = 1
+local TAPE_PLAY_STATE_PLAYING = 2
+local TAPE_PLAY_STATE_PAUSED = 3
+
+-- record state constants
+local TAPE_REC_STATE_EMPTY = 0
+local TAPE_REC_STATE_READY = 1
+local TAPE_REC_STATE_RECORDING = 2
+local TAPE_REC_STATE_PAUSED = 3
+
+-- default reserve seconds when computing diskfree
+local TAPE_DISK_RESERVE = 250
+
+-- underlying observable tape state; observers receive the full state table on each update
+local tape_state = Observable.new({
+  play = { state = TAPE_PLAY_STATE_EMPTY, pos = 0.0, len = 0.0, loop = true, file = nil },
+  rec  = { state = TAPE_REC_STATE_EMPTY, pos = 0.0, file = nil },
+})
+
+Audio.tape = {}
+
+--- get current tape state value
+-- Returns the same structure provided to subscribers.
+function Audio.tape.get_state()
+  return tape_state:value()
+end
+
+--- subscribe to tape state updates.
+-- @tparam any key unique key for this subscription (usually a table)
+-- @tparam function fn callback receiving full snapshot table
+function Audio.tape.subscribe(key, fn)
+  return tape_state:register(key, fn)
+end
+
+--- unsubscribe from tape state updates.
+-- @tparam any key unique key used when subscribing
+function Audio.tape.unsubscribe(key)
+  return tape_state:unregister(key)
+end
+
+-- engine callback handlers
+function Audio.tape._on_status(play_state, play_pos_s, play_len_s, rec_state, rec_pos_s, loop_enabled)
+  local current_state = Audio.tape.get_state()
+
+  local next_play = tab.gather(current_state.play, {})
+  next_play.state = play_state
+  next_play.pos = play_pos_s
+  next_play.len = play_len_s
+  next_play.loop = (loop_enabled ~= 0)
+
+  local next_rec = tab.gather(current_state.rec, {})
+  next_rec.state = rec_state
+  next_rec.pos = rec_pos_s
+
+  local next_state = tab.gather(current_state, {})
+  next_state.play = next_play
+  next_state.rec = next_rec
+
+  tape_state:set(next_state)
+end
+
+function Audio.tape._on_play_file(path)
+  local current_state = Audio.tape.get_state()
+  local filename = nil
+  if type(path) == 'string' then
+    filename = path:match("([^/\\]+)$")
+  end
+  local next_play = tab.gather(current_state.play, {})
+  next_play.file = filename
+  local updated_state = tab.gather(current_state, {
+    play = next_play
+  })
+  tape_state:set(updated_state)
+end
+
+function Audio.tape._on_rec_file(path)
+  local current_state = Audio.tape.get_state()
+  local filename = nil
+  if type(path) == 'string' then
+    filename = path:match("([^/\\]+)$")
+  end
+  local next_rec = tab.gather(current_state.rec, {})
+  next_rec.file = filename
+  local updated_state = tab.gather(current_state, {
+    rec = next_rec
+  })
+  tape_state:set(updated_state)
+end
+
+-- state constants for consumers
+Audio.tape.constants = {
+  TAPE_PLAY_STATE_EMPTY = TAPE_PLAY_STATE_EMPTY,
+  TAPE_PLAY_STATE_READY = TAPE_PLAY_STATE_READY,
+  TAPE_PLAY_STATE_PLAYING = TAPE_PLAY_STATE_PLAYING,
+  TAPE_PLAY_STATE_PAUSED = TAPE_PLAY_STATE_PAUSED,
+  TAPE_REC_STATE_EMPTY = TAPE_REC_STATE_EMPTY,
+  TAPE_REC_STATE_READY = TAPE_REC_STATE_READY,
+  TAPE_REC_STATE_RECORDING = TAPE_REC_STATE_RECORDING,
+  TAPE_REC_STATE_PAUSED = TAPE_REC_STATE_PAUSED,
+}
+
+-- tape state getters
+function Audio.tape_is_recording() return Audio.tape.get_state().rec.state == TAPE_REC_STATE_RECORDING end
+
+--- compute diskfree seconds at 48k/16-bit stereo
+-- reserve a small buffer by subtracting `reserve_s` seconds from `norns.disk`
+-- @tparam number reserve_s seconds to reserve
+-- @treturn number whole seconds available for new recording
+function Audio.tape_compute_diskfree(reserve_s)
+  local reserve = reserve_s or TAPE_DISK_RESERVE
+  if norns and norns.disk then
+    return math.floor((norns.disk - reserve) / .192)
+  end
+  return 0
+end
 
 --- set headphone gain.
 -- @tparam number gain (0-64)
@@ -163,9 +288,37 @@ Audio.tape_play_start = function()
   _norns.tape_play_start()
 end
 
+--- pause or resume tape playback.
+-- @tparam boolean paused
+Audio.tape_play_pause = function(paused)
+  _norns.tape_play_pause(paused and 1 or 0)
+end
+
 --- stop tape playing.
 Audio.tape_play_stop = function()
   _norns.tape_play_stop()
+end
+
+--- set tape looping on/off.
+-- @tparam boolean enabled
+Audio.tape_play_loop = function(enabled)
+  _norns.tape_play_loop(enabled and 1 or 0)
+end
+
+--- pause both tape playback and recording.
+Audio.tape_pause = function()
+  _norns.tape_pause()
+end
+
+--- resume both tape playback and recording.
+Audio.tape_resume = function()
+  _norns.tape_resume()
+end
+
+--- set tape looping on/off (global).
+-- @tparam boolean enabled
+Audio.tape_loop = function(enabled)
+  _norns.tape_loop(enabled and 1 or 0)
 end
 
 --- open a tape recording file.
@@ -177,6 +330,12 @@ end
 --- start tape recording.
 Audio.tape_record_start = function()
   _norns.tape_record_start()
+end
+
+--- pause or resume tape recording.
+-- @tparam boolean paused
+Audio.tape_record_pause = function(paused)
+  _norns.tape_record_pause(paused and 1 or 0)
 end
 
 --- stop tape recording.
@@ -211,6 +370,197 @@ end
 Audio.level_cut_rev = function(value)
   _norns.level_cut_rev(value)
 end
+
+
+
+--- Routing Functions
+-- @section Routing
+
+--- default audio connections for softcut
+Audio.default_softcut_routes = {
+  ["softcut:output_1"] = "crone:input_3",
+  ["softcut:output_2"] = "crone:input_4",
+  ["crone:output_3"]   = "softcut:input_1",
+  ["crone:output_4"]   = "softcut:input_2",
+}
+
+--- default audio connections for supercollider
+Audio.default_supercollider_routes = {
+  ["SuperCollider:out_1"] = "crone:input_5",
+  ["SuperCollider:out_2"] = "crone:input_6",
+  ["crone:output_5"]      = "SuperCollider:in_1",
+  ["crone:output_6"]      = "SuperCollider:in_2",
+}
+
+--- default audio connections for system (hardware)
+Audio.default_system_routes = {
+  ["system:capture_1"] = "crone:input_1",
+  ["system:capture_2"] = "crone:input_2",
+  ["crone:output_1"]   = "system:playback_1",
+  ["crone:output_2"]   = "system:playback_2",
+}
+
+Audio._default_routing_altered = false
+
+--- return the names of all input ports
+-- @treturn table list of port names
+Audio.input_ports = function()
+  return _norns.audio_get_input_ports()
+end
+
+--- return the names of all output ports
+-- @treturn table list of port names
+Audio.output_ports = function()
+  return _norns.audio_get_output_ports()
+end
+
+--- lookup all connections to the given port
+--
+-- the provided port name can be either an input port of an output port. if an
+-- input port is given then the returned list will consisten of output ports. if
+-- an output port is specified, connected input ports are returned.
+--
+-- @tparam string port name
+-- @treturn table list of port names
+Audio.port_connections = function(port)
+  return _norns.audio_get_port_connections(port)
+end
+
+--- connect an input to output or output to input
+-- @tparam string from the initiating port
+-- @tparam string to the desitnation port
+-- @treturn boolean true if connection request altered any routing
+Audio.port_connect = function(from, to)
+  local changed = _norns.audio_connect(from, to)
+  Audio._default_routing_altered = Audio._default_routing_altered or changed
+  return changed
+end
+
+--- disconnect an input to output or output to input
+-- @tparam string from the initiating port
+-- @tparam string to the desitnation port
+-- @treturn boolean true if connection request altered any routing
+Audio.port_disconnect = function(from, to)
+  local changed = _norns.audio_disconnect(from, to)
+  Audio._default_routing_altered = Audio._default_routing_altered or changed
+  return changed
+end
+
+--- determine if the audio routing has been altered via port_connect or
+--  port_disconnect
+-- @treturn boolean true if connections have been altered
+Audio.routing_is_altered = function()
+  -- NOTE: this works as long as port_connect and port_disconnect are used
+  -- exclusively. a more robust but slower implementation could use
+  -- port_connections to query all routes and compare those to the default
+  -- routing tables.
+  return Audio._default_routing_altered
+end
+
+--- disconnect all routing between audio clients
+Audio.routing_disconnect_all = function()
+  -- input ports
+  for _, ip in ipairs(_norns.audio_get_input_ports()) do
+    for _, c in ipairs(_norns.audio_get_port_connections(ip)) do
+      _norns.audio_disconnect(ip, c)
+    end
+  end
+  -- output ports (is this redundant?)
+  for _, op in ipairs(_norns.audio_get_output_ports()) do
+    for _, c in ipairs(_norns.audio_get_port_connections(op)) do
+      _norns.audio_disconnect(op, c)
+    end
+  end
+  -- mark routing as altered since we are using the low level functions
+  Audio._default_routing_altered = true
+end
+
+--- restores default audio routing
+--
+-- disconnects all established audio connections regardless of how they were
+-- created and establishes the default connections for the system, softcut, and
+-- supercollider.
+Audio.routing_default = function()
+  -- start from a known state
+  Audio.routing_disconnect_all()
+  Audio.system_connect()
+  Audio.softcut_connect()
+  Audio.supercollider_connect()
+
+  -- allow mods to tweak defaults
+  hook.audio_post_restore_default_routing()
+
+  Audio._default_routing_altered = false
+end
+
+Audio._routing_apply = function(routes, operation)
+  for source, destination in pairs(routes) do
+    operation(source, destination)
+  end
+end
+
+--- connect all routes defined in the given table
+--
+-- routing table keys specify the source port name with the associated value
+-- defining the destination port name.
+--
+-- @tparam table routes connections to establish
+Audio.routing_connect = function(routes)
+  Audio._routing_apply(routes, Audio.port_connect)
+end
+
+--- disconnect all routes defined in the given table
+--
+-- routing table keys specify the source port name with the associated value
+-- defining the destination port name.
+--
+-- @tparam table routes connections to establish
+Audio.routing_disconnect = function(routes)
+  Audio._routing_apply(routes, Audio.port_disconnect)
+end
+
+--- establish with default connections for system (hardware) input and output
+Audio.system_connect = function()
+  Audio.routing_connect(Audio.default_system_routes)
+end
+
+--- remove default connections for system (hardware) input and output
+Audio.system_disconnect = function()
+  Audio.routing_disconnect(Audio.default_system_routes)
+end
+
+--- establish with default connections for supercollider input and output
+Audio.supercollider_connect = function()
+  Audio.routing_connect(Audio.default_supercollider_routes)
+end
+
+--- remove default connections for supercollider input and output
+Audio.supercollider_disconnect = function()
+  Audio.routing_disconnect(Audio.default_supercollider_routes)
+end
+
+--- establish with default connections for softcut input and output
+Audio.softcut_connect = function()
+  Audio.routing_connect(Audio.default_softcut_routes)
+end
+
+--- remove default connections for softcut input and output
+Audio.softcut_disconnect = function()
+  Audio.routing_disconnect(Audio.default_softcut_routes)
+end
+
+--- prevents changes from triggering post script clean of audio routing
+--
+--  all audio routing performed within the passed in function is consider to
+--  have had no effect on the default system routing. disabling change tracking
+--  can be useful in mods and other specialized circumstances where changes need
+--  to persist across scripts.
+Audio.with_change_tracking_disabled = function(f)
+  local result = f()
+  Audio._default_routing_altered = false
+  return result
+end
+
 
 
 --- global functions

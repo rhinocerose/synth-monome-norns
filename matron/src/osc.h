@@ -6,10 +6,18 @@
  */
 
 #pragma once
-#include "lo/lo.h"
+#include <lo/lo.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 extern void osc_init();
 extern void osc_deinit();
 
 extern void osc_send(const char *, const char *, const char *, lo_message);
 extern void osc_send_crone(const char *, lo_message);
+
+#ifdef __cplusplus
+}
+#endif

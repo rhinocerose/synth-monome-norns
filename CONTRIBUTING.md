@@ -1,12 +1,25 @@
 contributing
 ==================================
 
-[![Build Status](https://travis-ci.org/monome/norns.svg?branch=main)](https://travis-ci.org/monome/norns)
-
 welcome
 -------
 
 we gladly accept contributions via github [pull requests](https://help.github.com/articles/about-pull-requests/).
+
+please see the ["good first issues" list on github](https://github.com/monome/norns/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22) which are good starting points to learn the basics of contributing.
+
+llm use
+-------
+
+this codebase was written by humans and we intend to keep it maintainable and understandable by humans.
+
+if you use a code assistant, ensure that:
+    - you have both read and understand the code
+    - the code is compact, without unnecessary abstraction, tests, or comments
+    - any PR is submitted by you (not your chatbot) written in your words, with a concise description of what issue is being addressed
+    - proposed changes are tested on hardware
+
+not following these guidelines creates a substantial burden for the maintainers.
 
 things you will need
 --------------------
@@ -59,13 +72,61 @@ api docs for main
 to view the api docs for the `main` branch,
 visit https://monome.org/docs/norns/api.
 
-those docs should be updated after a successful travis build
-of the norns `main` branch.
+testing c/c++ code
+------------------
 
+### quick start
 
-build infrastructure
---------------------
+run all tests:
+```bash
+./test.sh
+```
 
-continuous integration of `norns` is on
+run specific test:
+```bash
+# example: run matron `clock.h` tests
+./test.sh --targets=test_matron_clock
+```
 
-- [travis](https://travis-ci.org/) ([details](.travis.yml))
+see [tests/README.md](tests/README.md) for infrastructure details, advanced patterns, and comprehensive examples.
+
+### writing your first test
+
+tests mirror source structure. create `test_*.cpp` files, and they get picked up by the test runner automatically:
+
+```
+tests/matron/test_args.cpp               → matron/src/args.c
+tests/crone/test_window.cpp              → crone/src/Window.cpp
+```
+
+**test C code:**
+
+```cpp
+#include <doctest/doctest.h>
+
+extern "C" {
+#include "args.h"
+}
+
+TEST_CASE("args_parse handles local port") {
+    char *argv[] = {"matron", "-l", "8888", nullptr};
+    args_parse(3, argv);
+    CHECK(std::string(args_local_port()) == "8888");
+}
+```
+
+**test C++ code:**
+
+```cpp
+#include <doctest/doctest.h>
+#include "Window.h"
+
+TEST_CASE("window starts at zero") {
+    CHECK(Window::raisedCosShort[0] == doctest::Approx(0.0f));
+}
+```
+
+**assertions:**
+- `CHECK(expr)` — non-fatal
+- `REQUIRE(expr)` — fatal, stops test
+- `CHECK(value == doctest::Approx(expected))` — floating point

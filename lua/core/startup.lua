@@ -31,8 +31,22 @@ paramset = require 'core/paramset'
 params = paramset.new()
 norns.pmap = require 'core/pmap'
 
+-- embedded global modules
+json = _json
+
 -- load menu
 require 'core/menu'
+
+-- wire tape callbacks to audio.tape
+_norns.tape_status = function(ps, pp, pl, rs, rp, loop)
+  audio.tape._on_status(ps, pp, pl, rs, rp, loop)
+end
+_norns.tape_play_file = function(path)
+  audio.tape._on_play_file(path)
+end
+_norns.tape_rec_file = function(path)
+  audio.tape._on_rec_file(path)
+end
 
 -- global include function
 function include(file)
@@ -69,6 +83,8 @@ _norns.startup_status.ok = function()
   norns.state.resume()
   -- turn on VU
   _norns.poll_start_vu()
+  -- start tape state polling
+  _norns.poll_start_tape()
   -- report engines
   _norns.report_engines()
   wifi.init()
@@ -90,18 +106,10 @@ end
 -- initial screen state
 _norns.screen_save()
 
--- reverse stereo for norns shield
-if util.file_exists(_path.home .. "/reverse.txt") then
-  print("NORNS SHIELD: REVERSING STEREO")
-  os.execute("jack_disconnect 'crone:output_1' 'system:playback_1'")
-  os.execute("jack_disconnect 'crone:output_2' 'system:playback_2'")
-  os.execute("jack_connect 'crone:output_1' 'system:playback_2'")
-  os.execute("jack_connect 'crone:output_2' 'system:playback_1'")
-  os.execute("jack_disconnect 'system:capture_1' 'crone:input_1'")
-  os.execute("jack_disconnect 'system:capture_2' 'crone:input_2'")
-  os.execute("jack_connect 'system:capture_1' 'crone:input_2'")
-  os.execute("jack_connect 'system:capture_2' 'crone:input_1'")
-end
+-- ensure supercollider connections on restart
+audio.with_change_tracking_disabled(function()
+  audio.supercollider_connect()
+end)
 
 print("start_audio(): ")
 -- start the process of syncing with crone boot
